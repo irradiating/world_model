@@ -124,6 +124,57 @@ def dumyshape_gray(img):
 
     return img
 
+
+def dumyshape_gray_thresh(img):
+
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    img = cv2.resize(img, (128,128)) # 128,128
+
+
+    # обнуление диаппазонов
+
+    # img[ img <= 72 ] = 0
+    # img[img == 82] = 0
+    img[img <= 82] = 0
+    # img[ (img >= 40) & (img <= 82)] = 0
+    img[ img == 106 ] = 0 # прямоугольные блоки в земле
+    # img[img == 160] = 0 # отражение тучек
+
+
+
+    # img[ img == 165 ] = 0
+
+    # img[ img >=150 ] = 255
+
+    # img[ (img >= 83) & (img <= 90)] = 120
+
+    # img = img / 127.
+
+    # ret,img = cv2.threshold(img, 90, 255, cv2.THRESH_BINARY)
+
+    # mean = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 11, 2)
+    # gaussian = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+
+
+    # cv2.imshow("mean",mean)
+    # cv2.imshow("gaussian", gaussian)
+    # cv2.imshow("binary", img)
+    # cv2.waitKey(100)
+
+    # edge detection
+    # img = cv2.Canny(img, 100, 200) # 128,128
+
+    img = np.interp(img, (0,255), (0,1))
+    # img = img / 255.
+    img = np.expand_dims(img, axis=0) # (1, 128, 128)
+    # img = np.expand_dims(img, axis=0)  # (1, 1, 128, 128)
+
+    return img
+
+
+
+
 def reverse_dumyshape(deconv_img):
     deconv_img = deconv_img.squeeze(0) # [3, 128, 128]
     deconv_img = deconv_img.cpu().data.numpy() # (3, 128, 128)

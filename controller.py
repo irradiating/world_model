@@ -40,11 +40,11 @@ class Controller(nn.Module):
 
 
     def set_weights(self, set):
-        # print(set.shape) # (79884,)
+        # print(set.shape) # (24588,)
 
-        weights = set[:-12] # (79872,)
-        weights = np.reshape(weights, (12,6656)) # (12, 6656)
-        weights = torch.FloatTensor(weights) # [12, 6656]
+        weights = set[:-12] # (24576,)
+        weights = np.reshape(weights, (12,2048)) # (12, 2048)
+        weights = torch.FloatTensor(weights) # [12, 2048]
 
         bias = set[-12:] # (12,)
         bias = torch.FloatTensor(bias) # [12]
@@ -110,11 +110,12 @@ class Controller_RNN(nn.Module):
         self.rnn.load_state_dict( rnn_state_dict )
 
 
-        dence_weight = torch.FloatTensor( np.reshape( set[787456:793600], (12,512) ) ) # [12, 512]
-        dence_bias = torch.FloatTensor( set[793600:] ) # 12
+        # dence_weight = torch.FloatTensor( np.reshape( set[787456:793600], (12,512) ) ) # [12, 512]
+        # dence_bias = torch.FloatTensor( set[793600:] ) # 12
 
-        self.dence.weight.data.copy_(dence_weight.view_as(self.dence.weight.data))
-        self.dence.bias.data.copy_(dence_bias.view_as(self.dence.bias.data))
+        # self.dence.weight.data.copy_(dence_weight.view_as(self.dence.weight.data))
+        # self.dence.bias.data.copy_(dence_bias.view_as(self.dence.bias.data))
+
         # self.fc2.weight.data.copy_(l2w.view_as(self.fc2.weight.data))
         # self.fc2.bias.data.copy_(l2b.view_as(self.fc2.bias.data))
 
@@ -182,7 +183,8 @@ def test_controller():
     conv_vae_filename = "weights/conv_vae_gray.pkl" # 1, 1024
     lstm_mdn_filename = "weights/lstm_mdn_gray.pkl" # 1024
     controller_filename = "weights/controller_rnn_1024_12.pkl"
-    evaluator_filename = "weights/evaluator_openes_weights_20_0.499982.npz"
+    evaluator_openes_filename = "weights/evaluator_openes_weights_26_0.499966.npz"
+    evaluator_cma_filename = "weights/evaluator_cma_weights_4_1178.6666666666763.npz"
 
     population_size = 256
     generations = 5000
@@ -205,12 +207,25 @@ def test_controller():
         controller.load_state_dict( torch.load(controller_filename) )
 
     # evaluator restore
-    if os.path.exists(evaluator_filename):
+    if os.path.exists(evaluator_openes_filename):
         print("loading evaluator data")
-        data = np.load(evaluator_filename)
+        data = np.load(evaluator_openes_filename)
         weights = data["weights"]
         print("inserting weights into controller")
         controller.set_weights(weights)
+
+    # evaluator cma
+    if os.path.exists(evaluator_cma_filename):
+        print("loading cma evaluator data")
+        data = np.load(evaluator_cma_filename)
+        # mean_weights = data["mean"]
+        best_weights = data["best"]
+        print("inserting dense weights into controller")
+        controller.set_dence_weights(best_weights)
+
+        # sigma_init = 0.10 # initial standard deviation
+        # evaluator = cma.CMAEvolutionStrategy(mean_weights, sigma_init, {"popsize": population_size})
+
 
 
     img = env.reset()
@@ -232,6 +247,7 @@ def test_controller():
         actions = controller(input)
         actions = actions.squeeze(0).data.numpy() # [1. 1. 0. 1. 1. 1. 0. 1. 0. 1. 0. 0.]
 
+        print(actions)
 
         img, reward, done, info = env.step(actions)
 
@@ -726,8 +742,8 @@ if __name__ == "__main__":
     # controller = Controller()
 
     # train_controller_openes()
-    train_controller_cma()
-    # test_controller()
+    # train_controller_cma()
+    test_controller()
 
     # print( list(controller.parameters())[0].size() ) # [12, 8896]
     # print( list(controller.parameters())[1].size() ) # [12]

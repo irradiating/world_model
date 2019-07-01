@@ -2,7 +2,7 @@
 
 import retro
 # print(retro.data.list_games())
-
+import cma
 import cv2
 import numpy as np
 import os, sys, time, copy
@@ -16,7 +16,7 @@ from mdn_lstm import LSTM
 from controller import Controller
 from es import CMAES, PEPG
 
-from helper import dumyshape, dumyshape_gray_edges, dumyshape_gray, reward_calculation
+from helper import dumyshape, dumyshape_gray_edges, dumyshape_gray, reward_calculation, dumyshape_gray_thresh
 
 
 
@@ -56,8 +56,8 @@ def train_conv_lstm_on_pics(conv_vae,
                             src_dir,
                             batch_list):
 
-    conv_vae_buffer = []
-    latent_vector = None
+    # conv_vae_buffer = []
+    # latent_vector = None
     dataset = []
 
     # prepare dataset for learning
@@ -68,17 +68,18 @@ def train_conv_lstm_on_pics(conv_vae,
         if os.path.exists(full_name):
 
             img = cv2.imread(full_name) # (128, 128, 3)
-            img = dumyshape(img) # (3, 128, 128)
+            # img = dumyshape(img) # (3, 128, 128)
             # img = dumyshape_shrink_expand(img, scale) # (3, 128, 128)
             # img = dumyshape_gray_edges(img) # (1, 128, 128)
             # img = dumyshape_gray(img) # (1, 128, 128)
-            img = torch.FloatTensor(img) # [3, 128, 128]
+            img = dumyshape_gray_thresh(img) # (1, 128, 128)
+            img = torch.FloatTensor(img) # [1, 128, 128]
 
             dataset.append(img)
 
     dataset = torch.stack(dataset, dim=0) # [4000, 3, 128, 128]
 
-    sequence_len = dataset.size(0) - 1 # 3999
+    # sequence_len = dataset.size(0) - 1 # 3999
 
 
     #################
@@ -134,24 +135,24 @@ def train_conv_lstm_on_pics(conv_vae,
 
 
 def prepare_list_pics():
-    conv_vae_filename = "weights/conv_vae_SonicAndKnuckles.pkl"
+    # conv_vae_filename = "weights/conv_vae_SonicAndKnuckles.pkl"
     # conv_vae_filename = "weights/conv_vae_gray_edges.pkl"
-    # conv_vae_filename = "weights/conv_vae_gray.pkl"
-    lstm_mdn_filename = "weights/lstm_mdn_SonicAndKnuckles.pkl"
+    conv_vae_filename = "weights/conv_vae_gray.pkl"
+    # lstm_mdn_filename = "weights/lstm_mdn_SonicAndKnuckles.pkl"
     # lstm_mdn_filename = "weights/lstm_mdn_gray_edges.pkl"
-    # lstm_mdn_filename = "weights/lstm_mdn_gray.pkl"
+    lstm_mdn_filename = "weights/lstm_mdn_gray.pkl"
 
     base_dir = "/opt/Projects/dataset/sonic"
 
     batch_size = 4000
 
-    conv_vae = ConvVAE((3,128,128), 4608) # 4608
+    conv_vae = ConvVAE((1,128,128), 1024) # 4608
     conv_vae_optimizer = optim.Adam(conv_vae.parameters(), lr=0.00025)
     if os.path.exists(conv_vae_filename):
         print("loading conv vae weights")
         conv_vae.load_state_dict(torch.load(conv_vae_filename))
 
-    lstm_mdn = LSTM(vector_size=4608)
+    lstm_mdn = LSTM(vector_size=1024)
     lstm_mdn_optimizer = optim.Adam(lstm_mdn.parameters(), lr=0.00025)
     if os.path.exists(lstm_mdn_filename):
         print("loading lstm mdn weights")
@@ -163,7 +164,7 @@ def prepare_list_pics():
 
 
         # epoch inside subdir
-        for epoch in range(100):
+        for epoch in range(200):
 
             src_dir = os.path.join(base_dir, subdir)  # /opt/Projects/dataset/sonic/1
 
@@ -399,12 +400,12 @@ def train_controller():
     # print(env.action_space.sample()) # [1 1 1 0 1 0 1 0 0 1 1 1]
 
 
-    conv_vae_filename = "weights/conv_vae_SonicAndKnuckles.pkl"
-    lstm_mdn_filename = "weights/lstm_mdn_SonicAndKnuckles.pkl"
+    conv_vae_filename = "weights/conv_vae_gray.pkl"
+    lstm_mdn_filename = "weights/lstm_mdn_gray.pkl"
     controller_filename = "weights/controller.pkl"
 
     # only forward pass
-    conv_vae = ConvVAE((3,128,128), 4608)
+    conv_vae = ConvVAE((1,128,128), 1024)
     if os.path.exists(conv_vae_filename):
         print("loading cnn vae weights")
         conv_vae.load_state_dict(torch.load(conv_vae_filename))
@@ -481,9 +482,125 @@ def train_controller():
     print()
 
 
+def train_controller_cma():
+    # env_name = "SonicTheHedgehog-Genesis" # None
+    env_name = "SonicTheHedgehog2-Genesis"
+    # env_name = "SonicAndKnuckles-Genesis"
+    # env_name = "SonicTheHedgehog3-Genesis"
+    # env_name = "SonicAndKnuckles3-Genesis"
 
-def evaluate(weights, conv_vae, lstm_mdn, controller, env, n_steps=1000):
-    # print(weights.shape) # (79884,)
+    env = retro.make(env_name)
+    # print(env.observation_space) # Box(224, 320, 3)
+    # print(env.action_space) # MultiBinary(12)
+    # print(env.action_space.sample()) # [1 1 1 0 1 0 1 0 0 1 1 1]
+
+    # conv_vae_filename = "weights/conv_vae_SonicAndKnuckles.pkl" # 3, 4608
+    # lstm_mdn_filename = "weights/lstm_mdn_SonicAndKnuckles.pkl" # 4608
+    # controller_filename = "weights/controller_6656_12.pkl"
+
+    conv_vae_filename = "weights/conv_vae_gray.pkl" # 1, 1024
+    lstm_mdn_filename = "weights/lstm_mdn_gray.pkl" # 1024
+    controller_filename = "weights/controller_dence_cma_2048_12.pkl"
+    evaluator_cma_filename = "weights/evaluator_cma_weights_13_11886.000000000055.npz"
+
+
+    population_size = 256
+    generations = 5000
+
+
+    # only forward pass
+    conv_vae = ConvVAE((1,128,128), 1024)
+    if os.path.exists(conv_vae_filename):
+        print("loading conv vae weights")
+        conv_vae.load_state_dict(torch.load(conv_vae_filename))
+
+    # only forward pass
+    lstm_mdn = LSTM(vector_size=1024)
+    if os.path.exists(lstm_mdn_filename):
+        print("loading lstm mdn weights")
+        lstm_mdn.load_state_dict( torch.load(lstm_mdn_filename) )
+
+    controller = Controller(input_size=2048, action_size=12)
+    if os.path.exists(controller_filename):
+        print("loading controller weights")
+        controller.load_state_dict( torch.load(controller_filename) )
+
+    # evaluator openes restore
+    # if os.path.exists(evaluator_openes_filename):
+    #     print("loading openes evaluator data")
+    #     data = np.load(evaluator_openes_filename)
+    #     weights = data["weights"]
+    #     print("inserting weights into controller")
+    #     controller.set_weights(weights)
+
+
+    # evaluator cma
+    if os.path.exists(evaluator_cma_filename):
+        print("loading cma evaluator data")
+        data = np.load(evaluator_cma_filename)
+        mean_weights = data["mean"]
+        # best_weights = data["best"]
+        print("inserting dense weights into controller")
+        controller.set_weights(mean_weights)
+
+        sigma_init = 0.10 # initial standard deviation
+        evaluator = cma.CMAEvolutionStrategy(mean_weights, sigma_init, {"popsize": population_size})
+
+    else:
+        print("NO cma filename found, extracting dence weights from controller")
+        state_dict = controller.state_dict() # 6
+        dence_weight = state_dict["fc1.weight"] # [12, 2048] 24576
+        dence_weight = dence_weight.view(-1)  # [24576]
+
+        dence_bias = state_dict["fc1.bias"] # [12]         12
+
+        weights = torch.cat((dence_weight, dence_bias), dim=0) # [24588]
+        weights = weights.data.numpy() # (24588,)
+
+
+        sigma_init = 0.10 # initial standard deviation
+        evaluator = cma.CMAEvolutionStrategy(weights, sigma_init, {"popsize": population_size})
+
+
+    for generation in range(generations):
+
+        solutions = evaluator.ask() # 256, 24588 - list
+
+        fitness = np.zeros(population_size)
+
+        # evaluate solutions
+        for index in range(population_size):
+
+            curr_weight = solutions[index] # (24588,)
+
+            fitness[index] = evaluate(curr_weight, conv_vae, lstm_mdn, controller, env)
+
+        # print(fitness)
+
+        # inverse fitness table
+        fitness_inverted = -fitness # ЕС похоже ищет минимизатор. Инверсия чтоб самый большой фитнес стал самым малым
+        fitness_inverted = fitness_inverted.tolist()
+
+        # передать инвурсию в сма
+        evaluator.tell(solutions, fitness_inverted)
+
+        result = evaluator.result
+
+        best_param = result[0] # best evaluated solution [0.03405598 -0.22424321 0.16289401...-0.14126145 -0.04335651 -0.08884694] (6156,)
+        curr_reward = -result[1] # инверсия обратно 635.16
+        mean_params = result[5] # presumably better with noise [-0.05136075 -0.04151194 -0.01733577...-0.0587192 -0.0432042 -0.0475102 ] (6156,)
+        # sigma = result[6] # [0.09907158 0.09907164 0.09907168 ... 0.09907655 0.09907659 0.09907652] (6156,)
+
+        print(generation, curr_reward)
+
+        print("saving cma data")
+        evaluator_cma_filename = "weights/evaluator_cma_weights_%s_%s.npz" %(generation, curr_reward)
+        np.savez(evaluator_cma_filename, mean=mean_params, best=best_param)
+
+
+
+def evaluate(weights, conv_vae, lstm_mdn, controller, env):
+    # print(weights.shape) # (24588,)
 
     controller.set_weights(weights)
 
@@ -497,25 +614,34 @@ def evaluate(weights, conv_vae, lstm_mdn, controller, env, n_steps=1000):
     }
     # reward_calculation(reward_dict, reward_dict, reset=True)
 
-
+    max_reward = 0
+    exit_counter = 0
     img = env.reset()
 
-    for step in range(n_steps):
 
-        img = dumyshape(img) # (1, 3, 128, 128)
+    while True:
+
+        # img = dumyshape(img) # (1, 3, 128, 128)
+        img = dumyshape_gray_thresh(img) # (1, 128, 128)
         img = torch.FloatTensor(img)
+        img = img.unsqueeze(0)
 
 
         # latent vector
-        z = conv_vae(img, encode=True)  # [1, 4608]
+        z = conv_vae(img, encode=True)  # [1, 1024]
+        z = z.detach()
 
         # hidden state, cell state
-        h, c = lstm_mdn.encode(z.unsqueeze(0))  # [2, 1, 512] [2, 1, 512]
-        h = h.view(1, -1)  # [1, 1024]
-        c = c.view(1, -1)  # [1, 1024]
+        # h, c = lstm_mdn.encode(z.unsqueeze(0))  # [2, 1, 512] [2, 1, 512]
+        # h = h.view(1, -1)  # [1, 1024]
+        # c = c.view(1, -1)  # [1, 1024]
+        z_t = lstm_mdn.predict( z.unsqueeze(0) ) # [1, 1, 1024]
+        z_t = z_t.squeeze(0) # [1, 1024]
 
 
-        input = torch.cat((z, h, c), dim=1)  # 1, 6656
+
+        input = torch.cat((z, z_t), dim=1)  # [1, 2048]
+
 
         actions = controller(input)  # [1, 12]
         actions = actions.squeeze(0).cpu().data.numpy()  # (12,)
@@ -526,12 +652,16 @@ def evaluate(weights, conv_vae, lstm_mdn, controller, env, n_steps=1000):
 
         reward_calculation(reward_dict, info)
 
-        # env.render()
+        if reward_dict["reward_flow"] > max_reward:
+            max_reward = reward_dict["reward_flow"]
+            exit_counter = 0
+        else:
+            exit_counter += 1
 
-        # print(step, reward_dict["reward_flow"])
+        if exit_counter >= 512:
+            break
 
 
-    lstm_mdn.reset_states()
 
     return reward_dict["reward_flow"]
 
@@ -555,13 +685,13 @@ def test_conv_vae():
     # print(env.action_space.sample()) # [1 1 1 0 1 0 1 0 0 1 1 1]
 
 
-    conv_vae_filename = "weights/conv_vae_SonicAndKnuckles.pkl" # 4608
+    # conv_vae_filename = "weights/conv_vae_SonicAndKnuckles.pkl" # 4608
     # conv_vae_filename = "weights/conv_vae_gray_edges.pkl"
-    # conv_vae_filename = "weights/conv_vae_gray.pkl"
+    conv_vae_filename = "weights/conv_vae_gray.pkl"
 
 
     # only forward pass
-    conv_vae = ConvVAE((3,128,128), 4608)
+    conv_vae = ConvVAE((1,128,128), 1024)
     if os.path.exists(conv_vae_filename):
         print("loading conv vae weights")
         conv_vae.load_state_dict(torch.load(conv_vae_filename))
@@ -574,8 +704,8 @@ def test_conv_vae():
         while True:
 
             # img = dumyshape_gray_edges(img) # (1, 128, 128)
-            # img = dumyshape_gray(img) # (1, 128, 128)
-            img = dumyshape(img) # (3, 128, 128)
+            img = dumyshape_gray(img) # (1, 128, 128)
+            # img = dumyshape(img) # (3, 128, 128)
             img = torch.FloatTensor(img) # [3, 128, 128]
             img = img.unsqueeze(0) # [1, 3, 128, 128]
 
@@ -589,8 +719,8 @@ def test_conv_vae():
 
             env.render()
 
-            # cv2.imshow("conv vae deconv", deconv_img)
-            cv2.imshow("conv vae deconv", cv2.cvtColor(deconv_img, cv2.COLOR_BGR2RGB) )
+            cv2.imshow("conv vae deconv", deconv_img)
+            # cv2.imshow("conv vae deconv", cv2.cvtColor(deconv_img, cv2.COLOR_BGR2RGB) )
             cv2.waitKey(1)
 
 
@@ -622,22 +752,22 @@ def test_lstm_mdn():
     # print(env.action_space.sample()) # [1 1 1 0 1 0 1 0 0 1 1 1]
 
 
-    conv_vae_filename = "weights/conv_vae_SonicAndKnuckles.pkl" # 4608
-    lstm_mdn_filename = "weights/lstm_mdn_SonicAndKnuckles.pkl"
+    # conv_vae_filename = "weights/conv_vae_SonicAndKnuckles.pkl" # 4608
+    # lstm_mdn_filename = "weights/lstm_mdn_SonicAndKnuckles.pkl"
     # conv_vae_filename = "weights/conv_vae_gray_edges.pkl"
     # lstm_mdn_filename = "weights/lstm_mdn_gray_edges.pkl"
-    # conv_vae_filename = "weights/conv_vae_gray.pkl"
-    # lstm_mdn_filename = "weights/lstm_mdn_gray.pkl"
+    conv_vae_filename = "weights/conv_vae_gray.pkl"
+    lstm_mdn_filename = "weights/lstm_mdn_gray.pkl"
 
 
     # only forward pass
-    conv_vae = ConvVAE((3,128,128), 4608)
+    conv_vae = ConvVAE((1,128,128), 1024)
     if os.path.exists(conv_vae_filename):
         print("loading cnn vae weights")
         conv_vae.load_state_dict(torch.load(conv_vae_filename))
 
     # only forward pass
-    lstm_mdn = LSTM(vector_size=4608)
+    lstm_mdn = LSTM(vector_size=1024)
     if os.path.exists(lstm_mdn_filename):
         print("loading lstm mdn weights")
         lstm_mdn.load_state_dict( torch.load(lstm_mdn_filename) )
@@ -648,9 +778,9 @@ def test_lstm_mdn():
 
         while True:
 
-            img = dumyshape(img)
+            # img = dumyshape(img)
             # img = dumyshape_gray_edges(img)
-            # img = dumyshape_gray(img)
+            img = dumyshape_gray(img)
             img = torch.FloatTensor(img) # [3, 128, 128]
             img = img.unsqueeze(0) # [1, 3, 128, 128]
 
@@ -668,8 +798,8 @@ def test_lstm_mdn():
 
             env.render()
 
-            # cv2.imshow("lstm_mdn reconstruct", deconv_img)
-            cv2.imshow("lstm_mdn reconstruct", cv2.cvtColor(deconv_img, cv2.COLOR_BGR2RGB))
+            cv2.imshow("lstm_mdn reconstruct", deconv_img)
+            # cv2.imshow("lstm_mdn reconstruct", cv2.cvtColor(deconv_img, cv2.COLOR_BGR2RGB))
             cv2.waitKey(1)
 
 
@@ -780,6 +910,33 @@ def test_controller():
 
 
 
+def simple_env_run():
+    env_name = "SonicTheHedgehog2-Genesis"
+    # env_name = "SonicAndKnuckles-Genesis"
+    # env_name = "SonicTheHedgehog3-Genesis"
+    # env_name = "SonicAndKnuckles3-Genesis"
+
+    env = retro.make(env_name)
+    # print(env.observation_space) # Box(224, 320, 3)
+    # print(env.action_space) # MultiBinary(12)
+    # print(env.action_space.sample()) # [1 1 1 0 1 0 1 0 0 1 1 1]
+
+    img = env.reset()
+
+    while True:
+
+        img = dumyshape_gray_thresh(img)
+
+
+        # actions = env.action_space.sample()
+        actions = [0] * 12
+        actions[7] =1
+
+        img, reward, done, info = env.step(actions)
+
+
+
+
 
 
 if __name__ == "__main__":
@@ -788,8 +945,10 @@ if __name__ == "__main__":
     # prepare_list_pics()
 
     # train_controller()
+    train_controller_cma()
 
-    test_conv_vae()
+    # test_conv_vae()
     # test_lstm_mdn()
     # test_controller()
 
+    # simple_env_run()
